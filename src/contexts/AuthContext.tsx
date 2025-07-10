@@ -1,11 +1,29 @@
-
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import axios from 'axios';
 
+const baseUrl = import.meta.env.VITE_API_BASE_URL
+
+// Backend response structure
+interface LoginApiResponse {
+  status: string;
+  statusCode: number;
+  message: string;
+  time: string;
+  data: {
+    token: string;
+    userName: string;
+    name: string;
+    email?: string;
+    userRole: 'admin' | 'STAFF' | 'operator';
+  };
+}
+
+// Local user model
 interface User {
-  id: string;
   username: string;
-  role: 'admin' | 'operator';
-  email: string;
+  name: string;
+  email?: string;
+  userRole: 'admin' | 'STAFF' | 'operator';
 }
 
 interface AuthContextType {
@@ -30,10 +48,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for stored auth token on app start
     const token = localStorage.getItem('quickbus_token');
     const userData = localStorage.getItem('quickbus_user');
-    
+
     if (token && userData) {
       try {
         setUser(JSON.parse(userData));
@@ -48,25 +65,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      // Simulate API call - replace with actual API endpoint
-      if (username === 'admin' && password === 'admin123') {
-        const mockUser: User = {
-          id: '1',
-          username: 'admin',
-          role: 'admin',
-          email: 'admin@quickbus.com'
+      const response = await axios.post<LoginApiResponse>(`${baseUrl}/auth/login`, {
+        username,
+        password,
+      });
+
+      const { status, statusCode, data } = response.data;
+
+      if (status === 'SUCCESS' && statusCode === 200 && data.token) {
+        const userObj: User = {
+          username: data.userName,
+          name: data.name,
+          email: data.email || '',
+          userRole: data.userRole,
         };
-        
-        const mockToken = 'mock-jwt-token-' + Date.now();
-        
-        localStorage.setItem('quickbus_token', mockToken);
-        localStorage.setItem('quickbus_user', JSON.stringify(mockUser));
-        setUser(mockUser);
+
+        localStorage.setItem('quickbus_token', data.token);
+        localStorage.setItem('quickbus_user', JSON.stringify(userObj));
+        setUser(userObj);
         return true;
       }
+
       return false;
-    } catch (error) {
-      console.error('Login error:', error);
+    } catch (error: any) {
+      console.error('Login failed:', error?.response?.data || error.message);
       return false;
     }
   };

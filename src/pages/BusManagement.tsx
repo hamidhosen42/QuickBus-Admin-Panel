@@ -1,6 +1,5 @@
-
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,46 +22,10 @@ interface BusInfo {
   seatLayout: string;
 }
 
-const BusManagement = () => {
-  const [buses, setBuses] = useState<BusInfo[]>([
-    {
-      id: 'B001',
-      number: 'KL-01-A-1234',
-      model: 'Tata Ultra',
-      capacity: 45,
-      driver: 'David Smith',
-      conductor: 'Mark Johnson',
-      route: 'City Centre → Airport',
-      status: 'active',
-      lastMaintenance: '2024-01-15',
-      seatLayout: '2x2'
-    },
-    {
-      id: 'B002',
-      number: 'KL-01-B-5678',
-      model: 'Ashok Leyland',
-      capacity: 52,
-      driver: 'Lisa Brown',
-      conductor: 'Sarah Wilson',
-      route: 'Downtown → Mall',
-      status: 'active',
-      lastMaintenance: '2024-01-10',
-      seatLayout: '2x3'
-    },
-    {
-      id: 'B003',
-      number: 'KL-01-C-9012',
-      model: 'Mahindra Cruzio',
-      capacity: 35,
-      driver: 'James Wilson',
-      conductor: 'Emma Davis',
-      route: 'Station → University',
-      status: 'maintenance',
-      lastMaintenance: '2024-01-05',
-      seatLayout: '2x2'
-    }
-  ]);
+const baseUrl = import.meta.env.VITE_API_BASE_URL;
 
+const BusManagement = () => {
+  const [buses, setBuses] = useState<BusInfo[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBus, setEditingBus] = useState<BusInfo | null>(null);
   const [formData, setFormData] = useState({
@@ -76,37 +39,120 @@ const BusManagement = () => {
     seatLayout: '2x2'
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Fetch bus list
+  const fetchBuses = async () => {
+    if (!baseUrl) {
+      toast.error('API base URL is not configured');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/bus`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          // Add authentication headers if required, e.g., Authorization: Bearer <token>
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.statusCode === 200 && result.status === 'SUCCESS') {
+        const fetchedBuses: BusInfo[] = result.data.map((bus: any) => ({
+          id: bus._id,
+          number: bus.bus_number,
+          model: bus.model,
+          capacity: bus.capacity,
+          driver: bus.driver_name,
+          conductor: bus.conductor_name,
+          route: bus.assigned_route,
+          status: bus.status,
+          lastMaintenance: new Date().toISOString().split('T')[0], // Default to current date
+          seatLayout: bus.seat_layout
+        }));
+        setBuses(fetchedBuses);
+        toast.success('Bus list fetched successfully');
+      } else {
+        toast.error(result.message || 'Failed to fetch bus list');
+      }
+    } catch (error) {
+      console.error('Error fetching buses:', error);
+      toast.error('An error occurred while fetching the bus list');
+    }
+  };
+
+  // Fetch buses on component mount
+  useEffect(() => {
+    fetchBuses();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.number || !formData.model || !formData.capacity || !formData.driver) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const busData: BusInfo = {
-      id: editingBus?.id || `B${String(buses.length + 1).padStart(3, '0')}`,
-      number: formData.number,
-      model: formData.model,
-      capacity: Number(formData.capacity),
-      driver: formData.driver,
-      conductor: formData.conductor,
-      route: formData.route,
-      status: formData.status,
-      lastMaintenance: editingBus?.lastMaintenance || new Date().toISOString().split('T')[0],
-      seatLayout: formData.seatLayout
-    };
-
-    if (editingBus) {
-      setBuses(prev => prev.map(bus => bus.id === editingBus.id ? busData : bus));
-      toast.success('Bus updated successfully');
-    } else {
-      setBuses(prev => [...prev, busData]);
-      toast.success('Bus added successfully');
+    if (!baseUrl) {
+      toast.error('API base URL is not configured');
+      return;
     }
 
-    resetForm();
-    setIsDialogOpen(false);
+    const payload = {
+      bus_number: formData.number,
+      model: formData.model,
+      capacity: Number(formData.capacity),
+      seat_layout: formData.seatLayout,
+      driver_name: formData.driver,
+      conductor_name: formData.conductor,
+      assigned_route: formData.route,
+      status: formData.status
+    };
+
+    try {
+      const url = editingBus ? `${baseUrl}/bus/${editingBus.id}` : `${baseUrl}/bus`;
+      const method = editingBus ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          // Add authentication headers if required, e.g., Authorization: Bearer <token>
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.statusCode === 200 && result.status === 'SUCCESS') {
+        const busData: BusInfo = {
+          id: editingBus?.id || result.data._id || `B${String(buses.length + 1).padStart(3, '0')}`,
+          number: result.data?.bus_number || formData.number,
+          model: result.data?.model || formData.model,
+          capacity: result.data?.capacity || Number(formData.capacity),
+          driver: result.data?.driver_name || formData.driver,
+          conductor: result.data?.conductor_name || formData.conductor,
+          route: result.data?.assigned_route || formData.route,
+          status: result.data?.status || formData.status,
+          lastMaintenance: editingBus?.lastMaintenance || new Date().toISOString().split('T')[0],
+          seatLayout: result.data?.seat_layout || formData.seatLayout
+        };
+
+        // Refetch buses to ensure UI reflects backend state
+        await fetchBuses();
+
+        toast.success(editingBus ? 'Bus updated successfully' : 'Bus added successfully');
+        resetForm();
+        setIsDialogOpen(false);
+      } else {
+        // Handle non-200 responses, e.g., 404
+        toast.error(result.detail || result.message || `Failed to ${editingBus ? 'update' : 'add'} bus`);
+      }
+    } catch (error) {
+      console.error(`Error ${editingBus ? 'updating' : 'adding'} bus:`, error);
+      toast.error('An error occurred while adding or updating the bus. Please try again.');
+    }
   };
 
   const resetForm = () => {
@@ -138,9 +184,34 @@ const BusManagement = () => {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (busId: string) => {
-    setBuses(prev => prev.filter(bus => bus.id !== busId));
-    toast.success('Bus removed successfully');
+  const handleDelete = async (busId: string) => {
+    if (!baseUrl) {
+      toast.error('API base URL is not configured');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/bus/${busId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          // Add authentication headers if required, e.g., Authorization: Bearer <token>
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.statusCode === 200 && result.status === 'SUCCESS') {
+        // Refetch buses to ensure UI reflects backend state
+        await fetchBuses();
+        toast.success('Bus deleted successfully');
+      } else {
+        toast.error(result.detail || result.message || 'Failed to delete bus');
+      }
+    } catch (error) {
+      console.error('Error deleting bus:', error);
+      toast.error('An error occurred while deleting the bus');
+    }
   };
 
   const getStatusColor = (status: string) => {

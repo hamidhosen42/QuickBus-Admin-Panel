@@ -1,4 +1,4 @@
-
+// src/pages/Login.tsx
 import { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,9 +15,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (user) return <Navigate to="/dashboard" replace />;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,15 +25,11 @@ const Login = () => {
     }
 
     setIsLoading(true);
-    try {
-      const success = await login(formData.username, formData.password);
-      if (!success) {
-        toast.error('Invalid credentials. Try admin/admin123');
-      }
-    } catch (error) {
-      toast.error('Login failed. Please try again.');
-    } finally {
-      setIsLoading(false);
+    const success = await login(formData.username, formData.password);
+    setIsLoading(false);
+
+    if (!success) {
+      toast.error('Invalid credentials.');
     }
   };
 
@@ -62,8 +56,7 @@ const Login = () => {
                 type="text"
                 placeholder="Enter your username"
                 value={formData.username}
-                onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-                required
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -74,8 +67,7 @@ const Login = () => {
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Enter your password"
                   value={formData.password}
-                  onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  required
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 />
                 <Button
                   type="button"
@@ -92,11 +84,6 @@ const Login = () => {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-          <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-            <p className="text-sm text-gray-600 text-center">
-              Demo credentials: <strong>admin / admin123</strong>
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>
