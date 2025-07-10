@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,43 +22,10 @@ interface Route {
   status: 'active' | 'inactive';
 }
 
-const RouteManagement = () => {
-  const [routes, setRoutes] = useState<Route[]>([
-    {
-      id: 'R001',
-      name: 'City Centre Express',
-      from: 'City Centre',
-      to: 'Airport',
-      distance: 25,
-      duration: '45 mins',
-      fare: 150,
-      stops: ['Central Mall', 'Tech Park', 'Hospital', 'Airport'],
-      status: 'active'
-    },
-    {
-      id: 'R002',
-      name: 'Downtown Loop',
-      from: 'Downtown',
-      to: 'Mall',
-      distance: 12,
-      duration: '25 mins',
-      fare: 80,
-      stops: ['Bank Street', 'University', 'Mall'],
-      status: 'active'
-    },
-    {
-      id: 'R003',
-      name: 'Suburban Connect',
-      from: 'Station',
-      to: 'University',
-      distance: 18,
-      duration: '35 mins',
-      fare: 100,
-      stops: ['Residential Complex', 'Market', 'University'],
-      status: 'inactive'
-    }
-  ]);
+const baseUrl = import.meta.env.VITE_API_BASE_URL; // Fallback URL
 
+const RouteManagement = () => {
+  const [routes, setRoutes] = useState<Route[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingRoute, setEditingRoute] = useState<Route | null>(null);
   const [formData, setFormData] = useState({
@@ -73,36 +39,130 @@ const RouteManagement = () => {
     status: 'active' as 'active' | 'inactive'
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // Fetch routes from API
+  const fetchRoutes = async () => {
+    if (!baseUrl) {
+      toast.error('API base URL is not configured');
+      return;
+    }
+
+    const token = localStorage.getItem('quickbus_token');
+    if (!token) {
+      toast.error('Authentication token is missing. Please log in.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/route`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.statusCode === 200 && result.status === 'SUCCESS') {
+        const fetchedRoutes: Route[] = result.data.map((route: any) => ({
+          id: route.id,
+          name: route.name,
+          from: route.from_location,
+          to: route.to_location,
+          distance: route.distance_km,
+          duration: `${route.duration_minutes} mins`, 
+          fare: route.fare,
+          stops: route.stops,
+          status: route.status
+        }));
+        setRoutes(fetchedRoutes);
+      } else {
+        toast.error(result.message || result.detail || 'Failed to fetch route list');
+      }
+    } catch (error) {
+      console.error('Error fetching routes:', error);
+      toast.error('An error occurred while fetching the route list');
+    }
+  };
+
+  // Fetch routes on component mount
+  useEffect(() => {
+    fetchRoutes();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name || !formData.from || !formData.to || !formData.fare) {
       toast.error('Please fill in all required fields');
       return;
     }
 
-    const routeData: Route = {
-      id: editingRoute?.id || `R${String(routes.length + 1).padStart(3, '0')}`,
+    if (!baseUrl) {
+      toast.error('API base URL is not configured');
+      return;
+    }
+
+    const token = localStorage.getItem('quickbus_token');
+    if (!token) {
+      toast.error('Authentication token is missing. Please log in.');
+      return;
+    }
+
+    const durationMinutes = parseInt(formData.duration) || 0; // Convert duration to number (e.g., "45 mins" -> 45)
+
+    const payload = {
       name: formData.name,
-      from: formData.from,
-      to: formData.to,
-      distance: Number(formData.distance) || 0,
-      duration: formData.duration,
+      from_location: formData.from,
+      to_location: formData.to,
+      distance_km: Number(formData.distance) || 0,
+      duration_minutes: durationMinutes,
       fare: Number(formData.fare),
       stops: formData.stops.split(',').map(stop => stop.trim()).filter(Boolean),
       status: formData.status
     };
 
-    if (editingRoute) {
-      setRoutes(prev => prev.map(route => route.id === editingRoute.id ? routeData : route));
-      toast.success('Route updated successfully');
-    } else {
-      setRoutes(prev => [...prev, routeData]);
-      toast.success('Route added successfully');
-    }
+    try {
+      const url = editingRoute ? `${baseUrl}/route/${editingRoute.id}` : `${baseUrl}/route`;
+      const method = editingRoute ? 'PUT' : 'POST';
 
-    resetForm();
-    setIsDialogOpen(false);
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.statusCode === 200 && result.status === 'SUCCESS') {
+        const routeData: Route = {
+          id: editingRoute?.id || result.data.id,
+          name: result.data.name || formData.name,
+          from: result.data.from_location || formData.from,
+          to: result.data.to_location || formData.to,
+          distance: result.data.distance_km || Number(formData.distance) || 0,
+          duration: `${result.data.duration_minutes || durationMinutes} mins`,
+          fare: result.data.fare || Number(formData.fare),
+          stops: result.data.stops || payload.stops,
+          status: result.data.status || formData.status
+        };
+
+        // Refetch routes to ensure UI reflects backend state
+        await fetchRoutes();
+
+        toast.success(editingRoute ? 'Route updated successfully' : 'Route added successfully');
+        resetForm();
+        setIsDialogOpen(false);
+      } else {
+        toast.error(result.message || result.detail || `Failed to ${editingRoute ? 'update' : 'add'} route`);
+      }
+    } catch (error) {
+      console.error(`Error ${editingRoute ? 'updating' : 'adding'} route:`, error);
+      toast.error(`An error occurred while ${editingRoute ? 'updating' : 'adding'} the route`);
+    }
   };
 
   const resetForm = () => {
@@ -134,18 +194,76 @@ const RouteManagement = () => {
     setIsDialogOpen(true);
   };
 
-  const handleDelete = (routeId: string) => {
-    setRoutes(prev => prev.filter(route => route.id !== routeId));
-    toast.success('Route deleted successfully');
+  const handleDelete = async (routeId: string) => {
+    if (!baseUrl) {
+      toast.error('API base URL is not configured');
+      return;
+    }
+
+    const token = localStorage.getItem('quickbus_token');
+    if (!token) {
+      toast.error('Authentication token is missing. Please log in.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/route/${routeId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.statusCode === 200 && result.status === 'SUCCESS') {
+        // Refetch routes to ensure UI reflects backend state
+        await fetchRoutes();
+        toast.success('Route deleted successfully');
+      } else {
+        toast.error(result.message || result.detail || 'Failed to delete route');
+      }
+    } catch (error) {
+      console.error('Error deleting route:', error);
+      toast.error('An error occurred while deleting the route');
+    }
   };
 
-  const toggleStatus = (routeId: string) => {
-    setRoutes(prev => prev.map(route => 
-      route.id === routeId 
-        ? { ...route, status: route.status === 'active' ? 'inactive' : 'active' }
-        : route
-    ));
-    toast.success('Route status updated');
+  const toggleStatus = async (routeId: string) => {
+    if (!baseUrl) {
+      toast.error('API base URL is not configured');
+      return;
+    }
+
+    const token = localStorage.getItem('quickbus_token');
+    if (!token) {
+      toast.error('Authentication token is missing. Please log in.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/route/${routeId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.statusCode === 200 && result.status === 'SUCCESS') {
+        // Refetch routes to ensure UI reflects backend state
+        await fetchRoutes();
+        toast.success('Route status updated');
+      } else {
+        toast.error(result.message || result.detail || 'Failed to update route status');
+      }
+    } catch (error) {
+      console.error('Error updating route status:', error);
+      toast.error('An error occurred while updating the route status');
+    }
   };
 
   return (
