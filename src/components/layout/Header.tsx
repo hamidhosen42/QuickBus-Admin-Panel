@@ -45,12 +45,12 @@ export const Header = ({ title, onMenuClick }: HeaderProps) => {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="sm" className="flex items-center gap-2">
                 <User className="h-5 w-5" />
-                <span className="hidden sm:block">{user?.username}</span>
+                <span className="hidden sm:block">{user?.email}</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem className="flex flex-col items-start">
-                <span className="font-medium">{user?.username}</span>
+                <span className="font-medium">{user?.email}</span>
                 <span className="text-sm text-muted-foreground">{user?.email}</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

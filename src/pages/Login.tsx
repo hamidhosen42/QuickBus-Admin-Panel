@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 const Login = () => {
   const { user, login } = useAuth();
-  const [formData, setFormData] = useState({ username: '', password: '' });
+  const [formData, setFormData] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -19,13 +19,13 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.username || !formData.password) {
+    if (!formData.email || !formData.password) {
       toast.error('Please fill in all fields');
       return;
     }
 
     setIsLoading(true);
-    const success = await login(formData.username, formData.password);
+    const success = await login(formData.email, formData.password);
     setIsLoading(false);
 
     if (!success) {
@@ -50,13 +50,13 @@ const Login = () => {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="username"
-                type="text"
-                placeholder="Enter your username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               />
             </div>
             <div className="space-y-2">

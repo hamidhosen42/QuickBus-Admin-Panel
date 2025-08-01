@@ -1,34 +1,17 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import axios from 'axios';
-
-const baseUrl = import.meta.env.VITE_API_BASE_URL
-
-// Backend response structure
-interface LoginApiResponse {
-  status: string;
-  statusCode: number;
-  message: string;
-  time: string;
-  data: {
-    token: string;
-    userName: string;
-    name: string;
-    email?: string;
-    userRole: 'admin' | 'STAFF' | 'operator';
-  };
-}
+import { supabase } from '@/integrations/supabase/client';
+import type { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 // Local user model
 interface User {
-  username: string;
-  name: string;
-  email?: string;
+  id: string;
+  email: string;
   userRole: 'admin' | 'STAFF' | 'operator';
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
 }
@@ -45,58 +28,66 @@ export const useAuth = () => {
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('quickbus_token');
-    const userData = localStorage.getItem('quickbus_user');
-
-    if (token && userData) {
-      try {
-        setUser(JSON.parse(userData));
-      } catch (error) {
-        console.error('Error parsing stored user data:', error);
-        localStorage.removeItem('quickbus_token');
-        localStorage.removeItem('quickbus_user');
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        if (session?.user) {
+          const userObj: User = {
+            id: session.user.id,
+            email: session.user.email || '',
+            userRole: 'admin' // Default role, can be customized later
+          };
+          setUser(userObj);
+        } else {
+          setUser(null);
+        }
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        const userObj: User = {
+          id: session.user.id,
+          email: session.user.email || '',
+          userRole: 'admin' // Default role, can be customized later
+        };
+        setUser(userObj);
+      }
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const login = async (username: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const response = await axios.post<LoginApiResponse>(`${baseUrl}/auth/login`, {
-        username,
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
         password,
       });
 
-      const { status, statusCode, data } = response.data;
-
-      if (status === 'SUCCESS' && statusCode === 200 && data.token) {
-        const userObj: User = {
-          username: data.userName,
-          name: data.name,
-          email: data.email || '',
-          userRole: data.userRole,
-        };
-
-        localStorage.setItem('quickbus_token', data.token);
-        localStorage.setItem('quickbus_user', JSON.stringify(userObj));
-        setUser(userObj);
-        return true;
+      if (error) {
+        console.error('Login failed:', error.message);
+        return false;
       }
 
-      return false;
+      return !!data.user;
     } catch (error: any) {
-      console.error('Login failed:', error?.response?.data || error.message);
+      console.error('Login failed:', error.message);
       return false;
     }
   };
 
-  const logout = () => {
-    localStorage.removeItem('quickbus_token');
-    localStorage.removeItem('quickbus_user');
-    setUser(null);
+  const logout = async () => {
+    await supabase.auth.signOut();
   };
 
   return (
